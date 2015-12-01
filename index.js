@@ -1,27 +1,17 @@
 var NoiseBuffer = require('noise-buffer');
-
-function makeDistortionCurve(amount) {
-  var k = typeof amount === 'number' ? amount : 50,
-      n_samples = 44100,
-      curve = new Float32Array(n_samples),
-      deg = Math.PI / 180,
-      i = 0,
-      x;
-  for ( ; i < n_samples; ++i ) {
-    x = i * 2 / n_samples - 1;
-    curve[i] = ( 3 + k ) * x * 20 * deg / ( Math.PI + k * Math.abs(x) );
-  }
-  return curve;
-};
+var makeDistortionCurve = require('make-distortion-curve');
 
 module.exports = function(context) {
+  var lastNode;
   return function() {
     var node = context.createGain();
+
     var osc = context.createOscillator();
+    osc.type = "sine";
     osc.connect(node);
 
     var distortion = context.createWaveShaper();
-    distortion.curve = [0,1];
+    distortion.curve = makeDistortionCurve(2);
     distortion.oversample = '4x';
 
     osc.connect(distortion);
@@ -32,7 +22,7 @@ module.exports = function(context) {
 
     var noiseLowpass = context.createBiquadFilter();
     noiseLowpass.type = "lowpass";
-    noiseLowpass.frequency.value = 3000;
+    noiseLowpass.frequency.value = 1000;
 
     var noisePath = context.createGain();
     noisePath.connect(node);
@@ -43,15 +33,20 @@ module.exports = function(context) {
       if (typeof when !== 'number') {
         when = context.currentTime;
       }
+      if (lastNode && lastNode.stop && lastNode !== node) {
+        lastNode.stop(when);
+      }
+      lastNode = node;
       node.gain.setValueAtTime(1, when);
-      node.gain.exponentialRampToValueAtTime(0.0001, when + 1)
+      node.gain.exponentialRampToValueAtTime(0.0001, when + 1.2)
 
       osc.start(when);
-      osc.frequency.setValueAtTime(180, when);
+      osc.frequency.setValueAtTime(200, when);
       osc.frequency.exponentialRampToValueAtTime(55, when + 0.1);
+      osc.stop(when + 1.2);
 
       noiseSource.start(when);
-      noisePath.gain.exponentialRampToValueAtTime(0.0001, when + 0.001);
+      noisePath.gain.exponentialRampToValueAtTime(0.0001, when + 0.003);
 
 
     };
@@ -59,6 +54,7 @@ module.exports = function(context) {
       if (typeof when !== 'number') {
         when = context.currentTime;
       }
+      osc.stop(when);
     };
     return node;
   };
